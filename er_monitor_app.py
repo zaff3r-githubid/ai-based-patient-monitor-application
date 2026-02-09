@@ -43,40 +43,69 @@ init_session_state()
 # AUDIO ALERT SYSTEM
 # ============================================================================
 def play_3_beeps():
-    """Plays 3 short beeps using Web Audio API"""
+    """Plays 3 short beeps using Web Audio API with improved browser compatibility"""
     token = str(uuid.uuid4())
     components.html(
         f"""
-        <div id="beep-{token}"></div>
+        <div id="beep-container-{token}" style="display:none;"></div>
         <script>
         (function() {{
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          const ctx = new AudioContext();
-
-          function beep(startDelayMs, durationMs, freq) {{
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = "sine";
-            osc.frequency.value = freq;
-
-            gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
-
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-
-            const startTime = ctx.currentTime + (startDelayMs / 1000);
-            const stopTime  = startTime + (durationMs / 1000);
-
-            osc.start(startTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, stopTime);
-            osc.stop(stopTime);
+          try {{
+            // Create or resume audio context
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) {{
+              console.error('Web Audio API not supported');
+              return;
+            }}
+            
+            const ctx = new AudioContext();
+            
+            // Resume audio context if suspended (browser autoplay policy)
+            if (ctx.state === 'suspended') {{
+              ctx.resume().then(() => {{
+                playBeeps();
+              }});
+            }} else {{
+              playBeeps();
+            }}
+            
+            function playBeeps() {{
+              function beep(startDelayMs, durationMs, freq) {{
+                try {{
+                  const osc = ctx.createOscillator();
+                  const gain = ctx.createGain();
+                  
+                  osc.type = "sine";
+                  osc.frequency.value = freq;
+                  
+                  // Louder volume for better audibility
+                  gain.gain.setValueAtTime(0.001, ctx.currentTime);
+                  gain.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime + 0.01);
+                  
+                  osc.connect(gain);
+                  gain.connect(ctx.destination);
+                  
+                  const startTime = ctx.currentTime + (startDelayMs / 1000);
+                  const stopTime = startTime + (durationMs / 1000);
+                  
+                  osc.start(startTime);
+                  gain.gain.exponentialRampToValueAtTime(0.001, stopTime);
+                  osc.stop(stopTime);
+                }} catch (e) {{
+                  console.error('Error playing beep:', e);
+                }}
+              }}
+              
+              // 3 beeps: 200ms each, 200ms gaps (more distinct)
+              beep(0,   200, 880);   // First beep
+              beep(400, 200, 880);   // Second beep
+              beep(800, 200, 880);   // Third beep
+              
+              console.log('Alarm beeps triggered');
+            }}
+          }} catch (error) {{
+            console.error('Audio initialization error:', error);
           }}
-
-          // 3 beeps: 200ms each, 150ms gaps
-          beep(0,   200, 880);
-          beep(350, 200, 880);
-          beep(700, 200, 880);
         }})();
         </script>
         """,
