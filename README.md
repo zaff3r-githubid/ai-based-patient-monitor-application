@@ -477,15 +477,15 @@ SOFTWARE.
 - **Streamlit** - Web application framework
 - **Pandas** - Data manipulation library
 - **Course Instructors** - AI Practitioner Crash Course guidance
-- **Claude (Anthropic)** - Code improvement assistance
+- **ChatGpt and Claude (Anthropic)** - Code improvement assistance
 
 ---
 
 ## 📞 Contact
 
-**Student**: [Your Name]  
-**Email**: [your.email@example.com]  
-**GitHub**: [@yourusername](https://github.com/yourusername)  
+**Student**: [Zafar Adil]  
+**Email**: [zafaradil@ungmail.com]  
+**GitHub**: [@zaff3r-githubid](https://github.com/zaff3r-githubid)  
 **Course**: AI Practitioner Crash Course  
 
 ---
