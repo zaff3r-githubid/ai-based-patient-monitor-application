@@ -218,7 +218,7 @@ OPENAI_API_KEY = "sk-your-api-key-here"
 ### Step 4: Run Application
 
 ```bash
-streamlit run app_improved.py
+streamlit run er_monitor_app.py
 ```
 
 The app will open in your browser at `http://localhost:8501`
@@ -351,7 +351,7 @@ The app tracks:
 
 ```
 ai-patient-monitor/
-├── app_improved.py              # Main Streamlit application
+├── er_monitor_app.py              # Main Streamlit application
 ├── requirements.txt             # Python dependencies (Mac/Linux)
 ├── requirements_windows.txt     # Python dependencies (Windows)
 ├── .gitignore                   # Git ignore rules (protects secrets)

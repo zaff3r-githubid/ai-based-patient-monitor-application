@@ -48,7 +48,7 @@ This lets pip find the best available version for your system.
 
 4. **Run the app**
    ```bash
-   streamlit run app_improved.py
+   streamlit run er_monitor_app.py
    ```
 
 ## 🔧 If You Still Get Errors
@@ -86,7 +86,7 @@ venv\Scripts\activate
 pip install -r requirements_windows.txt
 
 # Run app
-streamlit run app_improved.py
+streamlit run er_monitor_app.py
 ```
 
 ---
