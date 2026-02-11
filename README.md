@@ -345,6 +345,60 @@ The app tracks:
 - **Total Tokens**: Sum (affects API cost)
 - **Success Rate**: API call reliability
 
+### 🔎 Splunk Observability Integration
+
+This application integrates with Splunk Enterprise via HTTP Event Collector (HEC) to provide AI observability and operational monitoring.
+
+**What Is Logged:**
+
+The app sends structured JSON events for:
+ai_inference (LLM calls)
+clinical_alert (WARNING / EMERGENCY)
+Failures
+Latency metrics
+Token usage
+Model name
+Scenario file
+Alert level
+Success state
+
+**Required Environment Variables:**
+
+Before running the app, set:
+
+$env:SPLUNK_HEC_URL="https://localhost:8088/services/collector"
+$env:SPLUNK_HEC_TOKEN="YOUR_HEC_TOKEN"
+$env:SPLUNK_INDEX="main"
+$env:SPLUNK_SOURCETYPE="ai-patient-monitor"
+
+After reboot, these must be set again.
+
+**Verify Ingestion**
+
+Run in Splunk
+
+index=main sourcetype="ai-patient-monitor"
+| sort - _time
+| head 20
+
+**Example AI Metrics Query**
+
+index=main sourcetype="ai-patient-monitor"
+| search event_type="ai_inference"
+| stats count avg(latency_ms) sum(tokens_total)
+
+**Included Dashboard**
+
+The included dashboard provides:
+
+AI call count
+Avg / P95 latency
+Token usage trends
+Alert breakdown
+AI failures table
+Calls by scenario
+Alerts over time
+
 ---
 
 ## 📂 Project Structure
