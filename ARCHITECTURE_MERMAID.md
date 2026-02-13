@@ -1,254 +1,185 @@
-# AI-Based Patient Monitor - Architecture Diagrams
+# AI-Based Patient Monitor — Architecture Diagrams (Final)
 
-## System Architecture (Mermaid)
+These Mermaid diagrams are formatted to render cleanly on GitHub.
 
-### High-Level Architecture
+---
+
+## 1) High-Level Architecture
 
 ```mermaid
 graph TB
     subgraph UI["User Interface Layer"]
-        A[Streamlit Web App]
+        UI1[Streamlit Web App]
     end
-    
+
     subgraph APP["Application Layer"]
-        B[CSV Parser<br/>Pandas]
-        C[Clinical Rule Engine<br/>Condition Detection]
+        APP1[CSV Parser<br/>Pandas]
+        APP2[Clinical Rule Engine<br/>Detection + Severity]
     end
-    
-    subgraph AI["AI/RAG Layer"]
-        D[Context Builder]
-        E[OpenAI API<br/>GPT-4o-mini]
-        F[Response Processor]
+
+    subgraph AI["AI / RAG Layer"]
+        AI1[Context Builder<br/>(Summary + Last 60 mins)]
+        AI2[OpenAI API<br/>gpt-4o-mini]
+        AI3[Response Processor<br/>(Structured Actions)]
     end
-    
-    subgraph OBS["Observability + Governance Layer"]
-        G[Token Tracking]
-        H[Latency Monitoring]
-        I[Error Handling]
-        J[Correlation IDs\n(pm_session_id / pm_run_id)]
-        K[Local JSONL Archive]
-        L[Splunk HEC Logger]
-        M[Splunk REST Run Summary\n(Mgmt API 8089)]
+
+    subgraph GOV["Observability + Governance"]
+        GOV1[Token + Latency Tracking]
+        GOV2[Correlation IDs<br/>(pm_session_id / pm_run_id)]
+        GOV3[Estimated Cost<br/>(per token)]
+        GOV4[Local JSONL Archive<br/>(optional)]
+        GOV5[Splunk HEC Logger<br/>(optional)]
+        GOV6[Splunk REST Run Summary<br/>(Mgmt API 8089, optional)]
     end
-    
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    F --> G
-    F --> H
-    F --> I
-    F --> J
-    F --> K
-    F --> L
-    L --> M
-    
-    style UI fill:#1E2761,color:#fff
-    style APP fill:#CADCFC,color:#333
-    style AI fill:#84B59F,color:#fff
-    style OBS fill:#F96167,color:#fff
+
+    UI1 --> APP1 --> APP2 --> AI1 --> AI2 --> AI3 --> GOV1 --> GOV2
+    GOV2 --> GOV3
+    GOV2 --> GOV4
+    GOV2 --> GOV5 --> GOV6
 ```
 
-### Data Flow Pipeline
+---
+
+## 2) End-to-End Data Flow
 
 ```mermaid
 flowchart LR
-    A[CSV Upload/<br/>Sample Selection] --> B[Validation<br/>Column & Type Check]
-    B --> C[Analysis<br/>Vitals Calculation]
-    C --> D[Detection<br/>Rule Evaluation]
-    D --> E{Abnormal?}
-    E -->|Yes| F[RAG Processing]
-    E -->|No| G[Display Normal Status]
-    F --> H[OpenAI API Call]
-    H --> I[Parse AI Response]
-    I --> J[Display Actions]
-    
-    D --> K[Visual Outputs<br/>Charts & Metrics]
-    I --> L[Observability<br/>Tokens & Latency]
-    
-    style A fill:#1E2761,color:#fff
-    style B fill:#CADCFC,color:#333
-    style C fill:#CADCFC,color:#333
-    style D fill:#84B59F,color:#fff
-    style E fill:#F96167,color:#fff
-    style F fill:#84B59F,color:#fff
-    style H fill:#F96167,color:#fff
+    DF1[CSV Upload<br/>or Sample Select] --> DF2[Validate Columns<br/>Parse Timestamp]
+    DF2 --> DF3[Analyze Latest Vitals<br/>Compute MAP]
+    DF3 --> DF4[Rule Evaluation<br/>Assign Severity]
+    DF4 --> DF5{Abnormal?<br/>(WARNING/EMERGENCY)}
+
+    DF5 -->|No| DF6[Display Normal Status<br/>Charts + Metrics]
+
+    DF5 -->|Yes| DF7[Build RAG Context<br/>(Summary + Last 60 mins)]
+    DF7 --> DF8[LLM Call]
+    DF8 --> DF9[Parse Structured Actions<br/>(Immediate/Monitoring/Doc/Escalation)]
+    DF9 --> DF10[Display Actions<br/>Download Action Plan]
+
+    DF8 --> DF11[Log Telemetry<br/>(tokens, latency, success)]
+    DF11 --> DF12[Add Correlation IDs<br/>Cost Estimate]
+    DF12 --> DF13[Optional: JSONL Archive]
+    DF12 --> DF14[Optional: Splunk HEC]
+    DF14 --> DF15[Optional: Splunk REST Summary]
 ```
 
-### RAG Pipeline Detail
+---
+
+## 3) RAG + Observability Sequence
 
 ```mermaid
 sequenceDiagram
-    participant UI as Streamlit UI
-    participant APP as Application
-    participant RAG as RAG Engine
-    participant LLM as OpenAI API
-    participant OBS as Observability
-    
-    UI->>APP: Upload patient CSV
-    APP->>APP: Validate columns
-    APP->>APP: Detect conditions
-    
-    alt Abnormality Detected
-        APP->>RAG: Build context
-        Note over RAG: 1. Extract 60min vitals<br/>2. Format as CSV string<br/>3. Add diagnosis summary
-        
-        RAG->>LLM: Send prompt with context
-        Note over LLM: System: Clinical AI<br/>User: Patient data + task
-        
-        LLM-->>RAG: Response with actions
-        RAG->>OBS: Log tokens & latency
-        RAG->>APP: Return parsed actions
-        APP->>UI: Display AI suggestions
-    else Normal Vitals
-        APP->>UI: Display normal status
+    participant U as User (Streamlit UI)
+    participant A as App (Rules + UI)
+    participant R as RAG Context Builder
+    participant L as LLM (OpenAI API)
+    participant O as Observability/Governance
+
+    U->>A: Upload CSV or select sample
+    A->>A: Validate + parse data
+    A->>A: Detect conditions + severity
+
+    alt WARNING/EMERGENCY
+        A->>R: Build context (summary + last 60 mins)
+        R->>L: Send prompt
+        L-->>R: Structured action plan
+        R-->>A: Return actions + usage
+        A->>O: Log latency/tokens/success + correlation IDs + cost
+        O-->>O: Optional JSONL archive
+        O-->>O: Optional Splunk HEC event
+        O-->>O: Optional REST run summary (Mgmt API)
+        A-->>U: Render actions + observability widgets
+    else NORMAL
+        A-->>U: Render normal status
     end
-    
-    OBS->>UI: Show metrics
 ```
 
-### Component Architecture
+---
+
+## 4) Component Architecture
 
 ```mermaid
 graph TD
-    subgraph Frontend["Frontend Components"]
-        A1[File Uploader]
-        A2[Metric Cards]
-        A3[Alert Banner]
-        A6[Alarm Engine\n(Web Audio + Ack Flow)]
-        A4[Trend Charts]
-        A5[Action Display]
-    end
-    
-    subgraph Backend["Backend Components"]
-        B1[Session Manager]
-        B2[CSV Parser]
-        B3[Condition Detector]
-        B4[MAP Calculator]
-        B5[AI Cache]
-    end
-    
-    subgraph AI["AI Components"]
-        C1[Prompt Builder]
-        C2[API Client]
-        C3[Response Parser]
-        C4[Token Counter]
-        C5[Cost Estimator]
+    subgraph FE["Frontend (Streamlit)"]
+        FE1[File Uploader / Sample Buttons]
+        FE2[Metrics + Trend Charts]
+        FE3[Alert Banner + Ack Button]
+        FE4[AI Action Plan Viewer<br/>+ Download]
+        FE5[Observability Widgets<br/>(Tokens + Latency)]
     end
 
-    subgraph Gov["Governance / Observability"]
-        G1[Correlation IDs]
-        G2[Splunk HEC Client]
-        G3[Local JSONL Archive]
-        G4[Splunk REST Search Client]
+    subgraph BE["Backend"]
+        BE1[Session State Manager]
+        BE2[CSV Loader + Validator]
+        BE3[Condition Detector<br/>(Rules + MAP)]
+        BE4[AI Cache<br/>(per patient/timestamp)]
     end
 
-    subgraph Alert["Alerting"]
-        A6[Alarm Engine\n(Web Audio + Ack Flow)]
+    subgraph LLM["AI / RAG"]
+        LLM1[Prompt Builder]
+        LLM2[OpenAI Client]
+        LLM3[Response Parser]
     end
-    
-    subgraph Data["Data Layer"]
-        D1[Patient CSV]
-        D2[Sample Files]
-        D3[Cache Store]
+
+    subgraph GOV["Observability + Governance"]
+        GOVa[Correlation IDs]
+        GOVb[Telemetry Logger<br/>(latency/tokens/success)]
+        GOVc[Cost Estimator]
+        GOVd[JSONL Archive (optional)]
+        GOVe[Splunk HEC Client (optional)]
+        GOVf[Splunk REST Search Client (optional)]
     end
-    
-    A1 --> B1
-    A1 --> D1
-    B1 --> B2
-    B2 --> B3
-    B3 --> B4
-    B3 --> C1
-    C1 --> C2
-    C2 --> C3
-    C3 --> C4
-    C4 --> C5
-    C5 --> G1
-    G1 --> G2
-    G1 --> G3
-    G2 --> G4
-    C3 --> B5
-    B5 --> D3
-    D2 --> B2
-    
-    style Frontend fill:#1E2761,color:#fff
-    style Backend fill:#CADCFC,color:#333
-    style AI fill:#84B59F,color:#fff
-    style Data fill:#F96167,color:#fff
+
+    subgraph AL["Alerting"]
+        AL1[Alarm Engine<br/>(Web Audio 3-beeps)]
+    end
+
+    FE1 --> BE1 --> BE2 --> BE3
+    BE3 --> FE2
+    BE3 --> FE3
+    FE3 --> AL1
+    BE3 --> LLM1 --> LLM2 --> LLM3 --> FE4
+    LLM3 --> BE4
+
+    LLM3 --> GOVb --> GOVa
+    GOVb --> GOVc
+    GOVa --> GOVd
+    GOVa --> GOVe --> GOVf
+    GOVb --> FE5
 ```
 
-### Emergency Detection Logic
+---
+
+## 5) Emergency Detection Logic
 
 ```mermaid
 flowchart TD
-    A[Analyze Latest Vitals] --> B{SpO₂ < 88%?}
-    B -->|Yes| C[EMERGENCY:<br/>Respiratory Failure]
-    B -->|No| D{SBP < 90 OR<br/>MAP < 65?}
-    
-    D -->|Yes| E[EMERGENCY:<br/>Hypotension]
-    D -->|No| F{HR ≥ 160 OR<br/>ECG = V-tach?}
-    
-    F -->|Yes| G[EMERGENCY:<br/>Arrhythmia]
-    F -->|No| H{Sepsis Score ≥ 3?}
-    
-    H -->|Yes| I[EMERGENCY:<br/>Suspected Sepsis]
-    H -->|No| J{Any WARNING<br/>criteria?}
-    
-    J -->|Yes| K[WARNING:<br/>Monitor Closely]
-    J -->|No| L[NORMAL:<br/>Continue Routine]
-    
-    subgraph Sepsis["Sepsis Criteria (Score 1 each)"]
-        S1[Fever ≥38°C OR<br/>Hypothermia ≤36°C]
-        S2[Tachycardia >100]
-        S3[Hypotension SBP<100]
-        S4[Hypoxemia SpO₂<94%]
+    E1[Analyze Latest Vitals] --> E2{SpO₂ < 88%?}
+    E2 -->|Yes| E3[EMERGENCY<br/>Respiratory Failure]
+    E2 -->|No| E4{SBP < 90<br/>OR MAP < 65?}
+
+    E4 -->|Yes| E5[EMERGENCY<br/>Hypotension]
+    E4 -->|No| E6{HR ≥ 160<br/>OR ECG contains V-tach?}
+
+    E6 -->|Yes| E7[EMERGENCY<br/>Arrhythmia]
+    E6 -->|No| E8{Sepsis Score ≥ 3?}
+
+    E8 -->|Yes| E9[EMERGENCY<br/>Suspected Sepsis]
+    E8 -->|No| E10{Any WARNING<br/>criteria?}
+
+    E10 -->|Yes| E11[WARNING<br/>Monitor Closely]
+    E10 -->|No| E12[NORMAL<br/>Continue Routine]
+
+    subgraph S["Sepsis Criteria (1 point each)"]
+        S1[Fever ≥ 38°C<br/>or ≤ 36°C]
+        S2[Tachycardia > 100]
+        S3[SBP < 100]
+        S4[SpO₂ < 94%]
     end
-    
-    style C fill:#F96167,color:#fff
-    style E fill:#F96167,color:#fff
-    style G fill:#F96167,color:#fff
-    style I fill:#F96167,color:#fff
-    style K fill:#F9E795,color:#333
-    style L fill:#84B59F,color:#fff
 ```
 
 ---
 
-## Usage in Documentation
-
-You can embed these Mermaid diagrams in:
-- GitHub README.md
-- Markdown documentation
-- Wiki pages
-- Most modern documentation platforms
-
-### Example:
-\`\`\`markdown
-## Architecture
-
-\`\`\`mermaid
-graph TB
-    A[User] --> B[App]
-    B --> C[AI]
-\`\`\`
-\`\`\`
-
----
-
-## Diagram Formats Provided
-
-1. **PowerPoint (.pptx)** - 5 professional slides with colored diagrams
-2. **Mermaid (.md)** - 5 diagrams for GitHub/documentation
-3. **SVG** - Coming next (vector graphics for high-quality printing)
-
----
-
-## Color Palette Used
-
-- **Navy (#1E2761)** - User Interface / Primary
-- **Ice Blue (#CADCFC)** - Application Layer / Secondary  
-- **Sage (#84B59F)** - AI/Success / Positive
-- **Coral (#F96167)** - Alerts/Emergency / Attention
-
-These colors create a professional medical/healthcare aesthetic.
+### Tips (GitHub)
+- GitHub renders Mermaid automatically in Markdown.
+- Keep node IDs unique (this file does).

@@ -56,9 +56,9 @@
   <!-- Layer 4: Observability -->
   <rect x="100" y="520" width="1000" height="80" rx="10" fill="#F96167" stroke="#F96167" stroke-width="2"/>
   <text x="600" y="550" font-family="Arial" font-size="18" font-weight="bold" 
-        text-anchor="middle" fill="white">Observability Layer</text>
+        text-anchor="middle" fill="white">Observability + Governance Layer</text>
   <text x="600" y="575" font-family="Arial" font-size="14" 
-        text-anchor="middle" fill="white">Token Tracking • Latency Monitoring • Error Handling • Success Metrics</text>
+        text-anchor="middle" fill="white">Tokens • Latency • Fail-open errors • Correlation IDs • Cost • Splunk (HEC/REST) • JSONL</text>
   
   <!-- Arrows -->
   <!-- UI to Data Processing -->
