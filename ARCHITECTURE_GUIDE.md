@@ -326,3 +326,21 @@ You now have:
 4. Reference in your demo video
 
 Good luck with your assignment! 🚀
+
+
+
+---
+
+## 🔭 Observability + Governance (What’s New in v2)
+
+Your implementation now goes beyond in-app metrics and adds **production-style AI observability**:
+
+- **Correlation IDs**: `pm_session_id` and `pm_run_id` added to every event for end-to-end tracing.
+- **Splunk HEC events** (optional): sends structured events such as:
+  - `ai_inference` (latency, tokens, model, success/failure, estimated cost)
+  - `clinical_alert` and `alert_acknowledged`
+- **Local JSONL archive** (optional): writes events to `logs/events.jsonl` for offline review.
+- **Splunk Management API (8089)** (optional): runs SPL searches to produce an in-app **run summary**:
+  - AI calls, success rate, avg/p95 latency, token totals, estimated cost, emergency count.
+
+**Fail-open design:** if Splunk isn’t configured, the app continues to run normally.

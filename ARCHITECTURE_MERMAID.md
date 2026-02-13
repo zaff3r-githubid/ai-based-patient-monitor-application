@@ -21,10 +21,14 @@ graph TB
         F[Response Processor]
     end
     
-    subgraph OBS["Observability Layer"]
+    subgraph OBS["Observability + Governance Layer"]
         G[Token Tracking]
         H[Latency Monitoring]
         I[Error Handling]
+        J[Correlation IDs\n(pm_session_id / pm_run_id)]
+        K[Local JSONL Archive]
+        L[Splunk HEC Logger]
+        M[Splunk REST Run Summary\n(Mgmt API 8089)]
     end
     
     A --> B
@@ -35,6 +39,10 @@ graph TB
     F --> G
     F --> H
     F --> I
+    F --> J
+    F --> K
+    F --> L
+    L --> M
     
     style UI fill:#1E2761,color:#fff
     style APP fill:#CADCFC,color:#333
@@ -108,6 +116,7 @@ graph TD
         A1[File Uploader]
         A2[Metric Cards]
         A3[Alert Banner]
+        A6[Alarm Engine\n(Web Audio + Ack Flow)]
         A4[Trend Charts]
         A5[Action Display]
     end
@@ -125,6 +134,18 @@ graph TD
         C2[API Client]
         C3[Response Parser]
         C4[Token Counter]
+        C5[Cost Estimator]
+    end
+
+    subgraph Gov["Governance / Observability"]
+        G1[Correlation IDs]
+        G2[Splunk HEC Client]
+        G3[Local JSONL Archive]
+        G4[Splunk REST Search Client]
+    end
+
+    subgraph Alert["Alerting"]
+        A6[Alarm Engine\n(Web Audio + Ack Flow)]
     end
     
     subgraph Data["Data Layer"]
@@ -142,6 +163,11 @@ graph TD
     C1 --> C2
     C2 --> C3
     C3 --> C4
+    C4 --> C5
+    C5 --> G1
+    G1 --> G2
+    G1 --> G3
+    G2 --> G4
     C3 --> B5
     B5 --> D3
     D2 --> B2

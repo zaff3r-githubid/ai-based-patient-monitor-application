@@ -6,11 +6,93 @@ import base64
 import io
 from typing import Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, List
 
 import pandas as pd
 import streamlit as st
 import requests
 import streamlit.components.v1 as components
+
+# ============================================================================
+# SPLUNK AI OBSERVABILITY (HEC) - OPTIONAL / FAIL-OPEN
+# ============================================================================
+SPLUNK_HEC_URL = os.getenv("SPLUNK_HEC_URL", "").strip()
+SPLUNK_HEC_TOKEN = os.getenv("SPLUNK_HEC_TOKEN", "").strip()
+SPLUNK_INDEX = os.getenv("SPLUNK_INDEX", "").strip()
+SPLUNK_SOURCETYPE = os.getenv("SPLUNK_SOURCETYPE", "ai-patient-monitor").strip()
+SPLUNK_MGMT_URL = os.getenv("SPLUNK_MGMT_URL", "").strip()
+SPLUNK_USERNAME = os.getenv("SPLUNK_USERNAME", "").strip()
+SPLUNK_PASSWORD = os.getenv("SPLUNK_PASSWORD", "").strip()
+
+
+# --- Splunk Management API (8089) credentials for in-app run summary ---
+
+# TLS verify for localhost demo (set PM_SPLUNK_VERIFY_TLS=1 to verify)
+PM_SPLUNK_VERIFY_TLS = os.getenv("PM_SPLUNK_VERIFY_TLS", "0").strip() in ("1","true","TRUE","yes","YES")
+
+
+
+def splunk_log(event: Dict[str, Any]):
+    """Send a structured event to Splunk HEC. Fails open (never breaks the demo).
+
+    Adds correlation ids (pm_session_id, pm_run_id) and optionally archives events locally as JSONL.
+    """
+    if not (SPLUNK_HEC_URL and SPLUNK_HEC_TOKEN):
+        return
+
+    # Enrich for correlation / investigation
+    try:
+        event = dict(event or {})
+        event.setdefault("app", "ai_patient_monitor")
+        event.setdefault("pm_session_id", st.session_state.get("pm_session_id"))
+        event.setdefault("pm_run_id", st.session_state.get("pm_run_id"))
+    except Exception:
+        # If anything weird happens, don't break the demo
+        return
+
+    # Optional cost estimate (demo-friendly). Override with env var COST_PER_TOKEN.
+    try:
+        cost_per_token = float(os.getenv("COST_PER_TOKEN", "0.0000005"))
+        tokens = event.get("tokens_total")
+        if tokens is not None:
+            tokens_f = float(tokens)
+            event["estimated_cost_usd"] = round(tokens_f * cost_per_token, 6)
+    except Exception:
+        pass
+
+    payload = {
+        "time": time.time(),
+        "host": os.getenv("COMPUTERNAME") or os.getenv("HOSTNAME") or "unknown-host",
+        "source": "streamlit",
+        "sourcetype": SPLUNK_SOURCETYPE,
+        "event": event,
+    }
+    if SPLUNK_INDEX:
+        payload["index"] = SPLUNK_INDEX
+
+    # Local JSONL archive (optional)
+    try:
+        log_path = os.getenv("PM_EVENT_LOG", "logs/events.jsonl").strip()
+        if log_path:
+            os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
+
+    # TLS verification toggle (default: off for local demo)
+    verify_tls = os.getenv("PM_SPLUNK_VERIFY_TLS", "0").strip() in ("1", "true", "TRUE", "yes", "YES")
+
+    try:
+        requests.post(
+            SPLUNK_HEC_URL,
+            headers={"Authorization": f"Splunk {SPLUNK_HEC_TOKEN}"},
+            data=json.dumps(payload),
+            timeout=2,
+            verify=verify_tls,
+        )
+    except Exception:
+        pass
 
 # === PIL for local visuals ===
 try:
@@ -120,6 +202,17 @@ st.set_page_config(
     layout="wide",
     page_icon="🩺"
 )
+
+
+# ============================================================================
+# RUN / SESSION IDS (for observability correlation)
+# ============================================================================
+import uuid
+if "pm_session_id" not in st.session_state:
+    st.session_state.pm_session_id = str(uuid.uuid4())
+if "pm_run_id" not in st.session_state:
+    st.session_state.pm_run_id = str(uuid.uuid4())
+
 
 # ============================================================================
 # VISUAL STYLING
@@ -378,7 +471,7 @@ def render_token_viz(usage: Optional[Dict]):
             unsafe_allow_html=True
         )
 
-def call_llm_actions(summary: Dict, df_tail: pd.DataFrame) -> Dict:
+def call_llm_actions(summary: Dict, df_tail: pd.DataFrame, source_name: Optional[str] = None) -> Dict:
     """
     Call LLM to generate nurse action suggestions based on patient data
     """
@@ -386,6 +479,7 @@ def call_llm_actions(summary: Dict, df_tail: pd.DataFrame) -> Dict:
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
     
     if not api_key:
+        splunk_log({"event_type":"ai_inference","app":"ai_patient_monitor","scenario": source_name or "unknown","alert_level": summary.get("level","UNKNOWN"),"diagnosis": summary.get("diagnosis",""),"model": os.getenv("OPENAI_MODEL","gpt-4o-mini"),"success": False,"error":"No API key configured"})
         return {
             "ok": False,
             "error": "⚠️ No API key configured. Set OPENAI_API_KEY environment variable or add to Streamlit secrets.",
@@ -433,6 +527,30 @@ Be specific, practical, and protocol-driven."""
     }
     
     url = base_url.rstrip("/") + "/chat/completions"
+
+    # --- Splunk AI observability context ---
+    _scenario = source_name or (summary.get("latest", {}).get("patient_id") if isinstance(summary.get("latest", {}), dict) else None) or "unknown"
+    _alert_level = summary.get("level", "UNKNOWN")
+    _diagnosis = summary.get("diagnosis", "")
+    _prompt_chars = len(system) + len(json.dumps(user_content))
+
+    def _log_ai_event(ok: bool, latency_s: float, usage: Optional[Dict], status_code: Optional[int] = None, error: Optional[str] = None):
+        splunk_log({
+            "event_type": "ai_inference",
+            "app": "ai_patient_monitor",
+            "scenario": _scenario,
+            "alert_level": _alert_level,
+            "diagnosis": _diagnosis,
+            "model": model,
+            "latency_ms": int(latency_s * 1000),
+            "status_code": status_code,
+            "prompt_chars": _prompt_chars,
+            "tokens_in": (usage or {}).get("prompt_tokens"),
+            "tokens_out": (usage or {}).get("completion_tokens"),
+            "tokens_total": (usage or {}).get("total_tokens"),
+            "success": bool(ok),
+            "error": error,
+        })
     
     try:
         t0 = time.perf_counter()
@@ -441,6 +559,7 @@ Be specific, practical, and protocol-driven."""
         
         if resp.status_code != 200:
             error_msg = resp.text[:300]
+            _log_ai_event(False, latency, None, status_code=resp.status_code, error=f"LLM API error {resp.status_code}: {error_msg}")
             return {
                 "ok": False,
                 "error": f"LLM API error {resp.status_code}: {error_msg}",
@@ -453,6 +572,7 @@ Be specific, practical, and protocol-driven."""
         text_out = data["choices"][0]["message"]["content"]
         usage = data.get("usage")
         
+        _log_ai_event(True, latency, usage, status_code=resp.status_code, error=None)
         return {
             "ok": True,
             "error": None,
@@ -462,6 +582,7 @@ Be specific, practical, and protocol-driven."""
         }
     
     except requests.exceptions.Timeout:
+        _log_ai_event(False, 60.0, None, status_code=None, error="Request timed out after 60 seconds")
         return {
             "ok": False,
             "error": "Request timed out after 60 seconds",
@@ -470,6 +591,7 @@ Be specific, practical, and protocol-driven."""
             "text": None
         }
     except Exception as e:
+        _log_ai_event(False, 0.0, None, status_code=None, error=f"Error calling LLM: {str(e)}")
         return {
             "ok": False,
             "error": f"Error calling LLM: {str(e)}",
@@ -572,8 +694,12 @@ with st.sidebar:
     
     st.markdown("---")
     if st.button("🔄 Reset Monitor / Clear Data", use_container_width=True):
+        _sid = st.session_state.get("pm_session_id")
         for k in list(st.session_state.keys()):
             del st.session_state[k]
+        # preserve session id, start a new run
+        st.session_state.pm_session_id = _sid or str(uuid.uuid4())
+        st.session_state.pm_run_id = str(uuid.uuid4())
         st.rerun()
 
 # ============================================================================
@@ -689,10 +815,12 @@ if summary["level"] == "EMERGENCY" and not st.session_state.alert_ack:
         play_3_beeps()
         st.session_state.alarm_last_beep_ts = now
     
+    splunk_log({"event_type":"clinical_alert","app":"ai_patient_monitor","scenario": source_name or "unknown","alert_level":"EMERGENCY","diagnosis": summary.get("diagnosis",""),"flags": summary.get("flags", [])})
     flashing_red_banner("EMERGENCY DETECTED — IMMEDIATE ACTION REQUIRED")
     
     if st.button("✅ Acknowledge Alert", type="primary"):
         st.session_state.alert_ack = True
+        splunk_log({"event_type":"alert_acknowledged","app":"ai_patient_monitor","scenario": source_name or "unknown","alert_level":"EMERGENCY","diagnosis": summary.get("diagnosis","")})
         st.success("✓ Alert acknowledged. Continue monitoring per protocol.")
         st.rerun()
 
@@ -777,7 +905,7 @@ else:
     if (st.session_state.auto_ai and cache_key not in st.session_state.ai_cache) or regen:
         with st.spinner("🤖 Calling AI..."):
             df_tail = df.tail(60)
-            result = call_llm_actions(summary, df_tail)
+            result = call_llm_actions(summary, df_tail, source_name=source_name)
             st.session_state.last_llm_ok = bool(result.get("ok"))
         
         st.session_state.ai_cache[cache_key] = result
@@ -858,5 +986,114 @@ This is an AI-generated suggestion. Follow facility protocols and clinical judgm
 # ============================================================================
 # FOOTER
 # ============================================================================
+
 st.markdown("---")
 st.caption("🏥 AI-Based Patient Monitor v2.0 | Educational Prototype | Not for clinical use")
+st.sidebar.caption(f"Mgmt URL set: {bool(SPLUNK_MGMT_URL)}")
+st.sidebar.caption(f"Mgmt URL set: {bool(os.getenv('SPLUNK_MGMT_URL'))}")
+st.sidebar.caption(f"Username set: {bool(SPLUNK_USERNAME)}")
+st.sidebar.caption(f"Password set: {bool(SPLUNK_PASSWORD)}")
+# ==========================================================
+# Splunk REST Search (Management API 8089) — for in-app summaries
+# ==========================================================
+
+def splunk_rest_enabled() -> bool:
+    return bool(SPLUNK_MGMT_URL and SPLUNK_USERNAME and SPLUNK_PASSWORD)
+
+def run_splunk_search(query: str, earliest: str = "-60m", latest: str = "now", timeout_s: int = 20) -> List[Dict[str, Any]]:
+    """
+    Run a Splunk search via Management API and return results (JSON rows).
+    Note: For localhost demos, PM_SPLUNK_VERIFY_TLS=0 is fine; production should verify TLS.
+    """
+    jobs_url = f"{SPLUNK_MGMT_URL}/services/search/jobs"
+    # Splunk expects 'search' prefixed with 'search ' if using raw SPL
+    data = {
+        "search": f"search {query}",
+        "earliest_time": earliest,
+        "latest_time": latest,
+        "output_mode": "json",
+        "exec_mode": "normal",
+    }
+
+    r = requests.post(jobs_url, data=data, auth=(SPLUNK_USERNAME, SPLUNK_PASSWORD), verify=PM_SPLUNK_VERIFY_TLS, timeout=10)
+    r.raise_for_status()
+
+    try:
+        sid = r.json().get("sid")
+    except Exception:
+        sid = None
+    if not sid:
+        raise RuntimeError("Splunk did not return a search job SID (sid).")
+
+    job_url = f"{SPLUNK_MGMT_URL}/services/search/jobs/{sid}"
+    t0 = time.time()
+    while True:
+        jr = requests.get(job_url, params={"output_mode": "json"}, auth=(SPLUNK_USERNAME, SPLUNK_PASSWORD),
+                          verify=PM_SPLUNK_VERIFY_TLS, timeout=10)
+        jr.raise_for_status()
+        payload = jr.json()
+        entry = (payload.get("entry") or [{}])[0]
+        content = entry.get("content", {})
+        if content.get("isDone") is True or content.get("dispatchState") == "DONE":
+            break
+        if time.time() - t0 > timeout_s:
+            raise TimeoutError("Timed out waiting for Splunk search completion.")
+        time.sleep(0.6)
+
+    results_url = f"{SPLUNK_MGMT_URL}/services/search/jobs/{sid}/results"
+    rr = requests.get(results_url, params={"output_mode": "json", "count": 0}, auth=(SPLUNK_USERNAME, SPLUNK_PASSWORD),
+                      verify=PM_SPLUNK_VERIFY_TLS, timeout=10)
+    rr.raise_for_status()
+    return rr.json().get("results") or []
+
+def get_demo_run_summary(pm_run_id: str) -> Dict[str, Any]:
+    """
+    Summarize this demo run using pm_run_id correlation.
+    Looks back 24h to avoid time-range surprises during demos.
+    """
+    base = f'index={SPLUNK_INDEX} sourcetype="{SPLUNK_SOURCETYPE}" pm_run_id="{pm_run_id}"'
+
+    q_ai = base + ' event_type="ai_inference" ' \
+        '| eval latency_ms=tonumber(latency_ms) ' \
+        '| eval tokens_total=tonumber(tokens_total) ' \
+        '| eval est=tonumber(estimated_cost_usd) ' \
+        '| eval s=case(success="true",1, success=1,1, true(),0) ' \
+        '| stats count as ai_calls sum(s) as successes ' \
+        '       avg(latency_ms) as avg_latency_ms p95(latency_ms) as p95_latency_ms ' \
+        '       sum(tokens_total) as tokens_sum sum(est) as est_cost_usd'
+
+    rows = run_splunk_search(q_ai, earliest="-24h", latest="now")
+    ai = rows[0] if rows else {}
+
+    q_em = base + ' event_type="clinical_alert" alert_level="EMERGENCY" | stats count as emergency_count'
+    rows2 = run_splunk_search(q_em, earliest="-24h", latest="now")
+    em = rows2[0] if rows2 else {}
+
+    def _to_int(v, default=0):
+        try:
+            return int(float(v))
+        except Exception:
+            return default
+
+    def _to_float(v, default=0.0):
+        try:
+            return float(v)
+        except Exception:
+            return default
+
+    ai_calls = _to_int(ai.get("ai_calls"), 0)
+    successes = _to_int(ai.get("successes"), 0)
+    failures = max(ai_calls - successes, 0)
+    success_rate = round((100.0 * successes / ai_calls), 2) if ai_calls else 0.0
+
+    return {
+        "ai_calls": ai_calls,
+        "successes": successes,
+        "failures": failures,
+        "success_rate_pct": success_rate,
+        "avg_latency_ms": _to_int(ai.get("avg_latency_ms"), 0),
+        "p95_latency_ms": _to_int(ai.get("p95_latency_ms"), 0),
+        "tokens_sum": _to_int(ai.get("tokens_sum"), 0),
+        "est_cost_usd": round(_to_float(ai.get("est_cost_usd"), 0.0), 4),
+        "emergency_count": _to_int(em.get("emergency_count"), 0),
+    }
