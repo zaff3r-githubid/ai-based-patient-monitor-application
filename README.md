@@ -165,6 +165,7 @@ graph TB
     J --> K
 ```
 
+
 ---
 
 ## 📊 Splunk: Where to See Dashboards, Alerts, and Reports
@@ -251,6 +252,7 @@ index=main sourcetype="ai-patient-monitor" event_type="ai_inference"
 
 ---
 
+
 ---
 
 ## 🚀 Run The Program Locally - Docker Setup - (One Command Setup)
@@ -329,7 +331,18 @@ docker compose down
 - No API keys stored in code
 - Fail-open Splunk logging (does not break demo)
 - Graceful degradation if OpenAI API key is missing
+- No secrets committed
+- .env excluded via .gitignore
+- Uses environment variables for configuration
+- Local demo disables TLS verification for self-signed HEC cert
+---
 
+---
+🧠 Design Decisions
+- Docker Compose enables reproducible grading
+- HTTPS HEC integration for realistic ingestion pipeline
+- Observability-first architecture (AI telemetry to Splunk)
+- Infrastructure as Code mindset
 ---
 
 ## 🚀 Author
@@ -341,3 +354,23 @@ Zafar Adil — AI Practitioner Crash Course (Assignment #8)
 ## 📌 Version
 
 v2.0 – Observability + Governance Edition
+v3.0 – Dockerized Observability Edition
+
+---
+
+# 📊 Architecture Diagram
+
+Download your clean submission-ready PNG here:
+
+👉 **Download this file and place it inside `/docs/`**
+
+[Download ARCHITECTURE_DIAGRAM.png](sandbox:/mnt/data/ARCHITECTURE_DIAGRAM.png)
+
+Then commit:
+
+```bash
+git add docs/ARCHITECTURE_DIAGRAM.png
+git commit -m "Add final architecture diagram"
+git push
+
+
