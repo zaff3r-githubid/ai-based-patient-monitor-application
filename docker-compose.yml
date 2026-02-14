@@ -1,0 +1,50 @@
+services:
+  splunk:
+    image: splunk/splunk:latest
+    container_name: ai-pm-splunk
+    environment:
+      - SPLUNK_START_ARGS=${SPLUNK_START_ARGS}
+      - SPLUNK_GENERAL_TERMS=${SPLUNK_GENERAL_TERMS}
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com
+      - SPLUNK_PASSWORD=${SPLUNK_PASSWORD}
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
+    ports:
+      - "8000:8000"   # Splunk Web
+      - "8088:8088"   # HEC
+      - "8089:8089"   # Splunk mgmt (optional but handy)
+    volumes:
+      - splunk_etc:/opt/splunk/etc
+      - splunk_var:/opt/splunk/var
+      
+    healthcheck:
+      test: ["CMD-SHELL", "curl -ks https://localhost:8089/services/server/info -u admin:${SPLUNK_PASSWORD} > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-pm-app
+    environment:
+      - SPLUNK_HEC_URL=https://splunk:8088/services/collector
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
+      - SPLUNK_INDEX=${SPLUNK_INDEX}
+      - SPLUNK_SOURCETYPE=${SPLUNK_SOURCETYPE}
+      - PM_SPLUNK_VERIFY_TLS=0
+      - SPLUNK_MGMT_URL=https://splunk:8089
+      - SPLUNK_USERNAME=admin
+      - SPLUNK_PASSWORD=${SPLUNK_PASSWORD}
+      - PM_EVENT_LOG=logs/events.jsonl
+      - COST_PER_TOKEN=0.0000005
+    ports:
+      - "8501:8501"
+    depends_on:
+      splunk:
+        condition: service_healthy
+
+volumes:
+  splunk_etc:
+  splunk_var:
