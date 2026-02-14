@@ -245,9 +245,81 @@ index=main sourcetype="ai-patient-monitor" event_type="ai_inference"
 
 ## 📂 Updated Architecture Files (Included)
 
-- 📊 `AI_Architecture_Diagrams_UPDATED.pptx`
-- 📝 `ARCHITECTURE_MERMAID_UPDATED.md`
-- 📘 `ARCHITECTURE_GUIDE_UPDATED.md`
+- 📊 `AI_Architecture_Diagrams.pptx`
+- 📝 `ARCHITECTURE_MERMAID.md`
+- 📘 `ARCHITECTURE_GUIDE.md`
+
+---
+
+---
+
+## 🚀 Run Locally (One Command Setup)
+
+### Prerequisites
+
+* Docker Desktop installed
+* Docker Desktop running
+
+---
+
+### 1️⃣ Clone Repo
+
+```bash
+git clone <your-repo-url>
+cd ai-based-patient-monitor-application
+```
+
+---
+
+### 2️⃣ Start Everything
+
+```bash
+docker compose up -d --build
+```
+
+---
+
+### 3️⃣ Access Services
+
+* 🧠 Streamlit App → [http://localhost:8501](http://localhost:8501)
+* 📊 Splunk Web → [http://localhost:8000](http://localhost:8000)
+
+Login:
+
+```
+Username: admin
+Password: (see .env file SPLUNK_PASSWORD)
+```
+
+---
+
+### 4️⃣ Verify HEC (Optional Smoke Test)
+
+```powershell
+$token = (Get-Content .\.env | Select-String "^SPLUNK_HEC_TOKEN=" | % { $_.Line.Split("=")[1].Trim() })
+@'
+{"event":"hec-smoke-test","sourcetype":"ai-patient-monitor","index":"main"}
+'@ | Set-Content -Encoding ascii .\hec_test.json
+
+curl.exe -k https://localhost:8088/services/collector `
+  -H "Authorization: Splunk $token" `
+  -H "Content-Type: application/json" `
+  --data-binary "@hec_test.json"
+```
+
+Search in Splunk:
+
+```spl
+index=main sourcetype=ai-patient-monitor "hec-smoke-test"
+```
+
+---
+
+### 5️⃣ Stop
+
+```bash
+docker compose down
+```
 
 ---
 
