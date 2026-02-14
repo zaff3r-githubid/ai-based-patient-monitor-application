@@ -253,7 +253,7 @@ index=main sourcetype="ai-patient-monitor" event_type="ai_inference"
 
 ---
 
-## 🚀 Run Locally (One Command Setup)
+## 🚀 Run The Program Locally - Docker Setup - (One Command Setup)
 
 ### Prerequisites
 
