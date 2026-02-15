@@ -10,7 +10,7 @@ services:
       - SPLUNK_PASSWORD=${SPLUNK_PASSWORD}
       - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
     ports:
-      - "8000:8000"   # Splunk Web
+      - "8001:8000"   # Splunk Web
       - "8088:8088"   # HEC
       - "8089:8089"   # Splunk mgmt (optional but handy)
     volumes:
